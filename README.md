@@ -32,7 +32,7 @@ make run
 - `system/`: Core OS modules (VFS, Shell, Paging, CPU management).
 
 ## 🐚 Snapshot
-![NewKRNL Console](https://via.placeholder.com/640x400?text=NewKRNL+Zero-BIOS+VGA+Terminal)
+![NewKRNL Console](banner.png)
 
 ---
 *Built with ❤️ for standard-compliant low-level enthusiasts.*
