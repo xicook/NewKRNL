@@ -1,5 +1,7 @@
 # NewKRNL Zero-BIOS Terminal OS
 
+![NewKRNL Banner](banner.png)
+
 A robust, high-performance x86 operating system built from scratch with a "Zero-BIOS" architecture. After the initial boot, the kernel takes full control of the hardware using native 32-bit drivers, bypassing legacy BIOS interrupts.
 
 ## 🚀 Features
@@ -31,8 +33,5 @@ make run
 - `drivers/`: Native hardware drivers (VGA, Keyboard, PIT, Serial).
 - `system/`: Core OS modules (VFS, Shell, Paging, CPU management).
 
-## 🐚 Snapshot
-![NewKRNL Console](banner.png)
-
 ---
-*Built with ❤️ for standard-compliant low-level enthusiasts.*
+*Built with ❤️ by the NewKRNL Team.*
