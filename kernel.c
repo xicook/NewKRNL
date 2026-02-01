@@ -29,7 +29,8 @@ void kernel_main() {
     shell_init();
 
     while(1) {
-        asm volatile("hlt");
+        shell_update();
+        asm volatile("pause");
     }
 }
 

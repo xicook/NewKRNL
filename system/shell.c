@@ -4,6 +4,7 @@
 #include "setup.h"
 #include "lib.h"
 #include "../drivers/vga.h"
+#include "../drivers/keyboard.h"
 #include <stddef.h>
 
 static char buffer[1024];
@@ -16,10 +17,17 @@ void shell_init() {
     vfs_init();
     vga_set_color(15, 0);
     vga_puts("\n");
-    // Prompt will be printed by the first execute_command or directly
     vga_puts(global_username);
     vga_puts("@NewKRNL:# ");
     b_idx = 0;
+}
+
+void shell_update() {
+    if (shell_active && key_waiting) {
+        char c = last_key;
+        key_waiting = 0;
+        shell_handle_key(c);
+    }
 }
 
 static void neofetch() {

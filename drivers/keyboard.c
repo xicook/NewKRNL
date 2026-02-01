@@ -26,13 +26,17 @@ void keyboard_callback(Registers* r) {
     uint8_t scancode;
     asm volatile ("inb %1, %0" : "=a"(scancode) : "dN"(0x60));
     if (!(scancode & 0x80)) {
-        if (scancode < 128) {
-            char c = kbd_us[scancode];
-            if (c) {
-                last_key = c;
-                key_waiting = 1;
-                shell_handle_key(c);
-            }
+        char c = 0;
+        if (scancode < 128) c = kbd_us[scancode];
+        
+        if (scancode == 0x48) c = 'W';
+        if (scancode == 0x50) c = 'S';
+        if (scancode == 0x4B) c = 'A';
+        if (scancode == 0x4D) c = 'D';
+
+        if (c) {
+            last_key = c;
+            key_waiting = 1;
         }
     }
 }

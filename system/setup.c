@@ -9,9 +9,12 @@ char global_timezone[32] = "UTC";
 
 // Simplified blocking char read
 static char wait_key() {
-    while(!key_waiting);
+    while(!key_waiting) {
+        asm volatile("pause");
+    }
+    char c = last_key;
     key_waiting = 0;
-    return last_key;
+    return c;
 }
 
 static void kgets(char* buf, int max) {
