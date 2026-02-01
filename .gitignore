@@ -1,0 +1,15 @@
+# Build artifacts
+*.bin
+*.o
+*.img
+drivers/*.o
+system/*.o
+system/cpu/*.o
+system/mm/*.o
+
+# OS images
+os.img
+
+# IDE / System
+.vscode/
+.DS_Store
