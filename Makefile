@@ -8,8 +8,8 @@ LDFLAGS = -m elf_i386 -T linker.ld --oformat binary
 OBJS = kernel.o \
        system/cpu/gdt.o system/cpu/idt.o system/cpu/interrupt_stubs.o system/cpu/isr.o \
        system/mm/paging.o \
-       drivers/vga.o drivers/serial.o drivers/keyboard.o drivers/pit.o \
-       system/shell.o system/vfs.o system/snake.o system/setup.o system/lib.o
+       drivers/vga.o drivers/serial.o drivers/keyboard.o drivers/pit.o drivers/rtc.o \
+       system/shell.o system/vfs.o system/snake.o system/setup.o system/lib.o system/apps.o
 
 all: os.img
 

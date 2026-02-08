@@ -28,5 +28,6 @@ int vfs_mkfile(const char* name, const char* content);
 int vfs_cd(const char* name);
 int vfs_rm(const char* name);
 char* vfs_read(const char* name);
+FSNode* vfs_find_bin_app(const char* name);
 
 #endif

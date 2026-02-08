@@ -26,6 +26,7 @@ void vfs_init() {
     node_count = 0;
     root = new_node("/", FS_DIR);
     cwd = root;
+    vfs_mkdir("bin");
 }
 
 FSNode* vfs_get_root() { return root; }
@@ -103,6 +104,21 @@ char* vfs_read(const char* name) {
         if (kstrcmp(cwd->children[i]->name, name) == 0 && cwd->children[i]->type == FS_FILE) {
             return cwd->children[i]->content;
         }
+    }
+    return NULL;
+}
+
+FSNode* vfs_find_bin_app(const char* name) {
+    FSNode* bin = NULL;
+    for (int i = 0; i < root->child_count; i++) {
+        if (root->children[i]->type == FS_DIR && kstrcmp(root->children[i]->name, "bin") == 0) {
+            bin = root->children[i];
+            break;
+        }
+    }
+    if (!bin) return NULL;
+    for (int i = 0; i < bin->child_count; i++) {
+        if (kstrcmp(bin->children[i]->name, name) == 0) return bin->children[i];
     }
     return NULL;
 }
