@@ -41,7 +41,7 @@ static void neofetch() {
     vga_set_color(15, 0);
     vga_puts("  ---------------------\n");
     vga_puts("  OS: NewKRNL V5 (Zero-BIOS)\n");
-    vga_puts("  Kernel: Workstation Core\n");
+    vga_puts("  Kernel: Version 1.6.7\n");
     vga_puts("  User: "); vga_puts(global_username); vga_puts("\n");
     vga_puts("  Timezone: "); vga_puts(global_timezone); vga_puts("\n");
     vga_puts("  Term: VGA 80x25\n\n");
