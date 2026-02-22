@@ -10,7 +10,7 @@ A robust, high-performance x86 operating system built from scratch with a "Zero-
 - **VGA Terminal**: Full 80x25 text mode terminal with hardware cursor support and ANSI-inspired colors.
 - **Boot Setup**: Interactive first-boot interview for username and timezone configuration.
 - **Internationalization**: Support for **PT-BR (ABNT2)** and US keyboard layouts via the `layout` command.
-- **Package Manager (`pkg`)**: Simulated repository and app installation (`matrix`, `calc`, `edit`).
+- **Package Manager (`pkg`)**: Simulated repository and app installation (`matrix`, `calc`, `edit`, `doom`).
 - **RAMFS**: Lightweight in-memory file system.
 - **Command Suite**: UNIX-like utilities (`ls`, `mkdir`, `cat`, `rm`, `cd`) + system tools (`reboot`, `shutdown`, `sysinfo`, `time`).
 - **Interactive Shell**: Responsive, interrupt-driven TTY with prompt customization.
