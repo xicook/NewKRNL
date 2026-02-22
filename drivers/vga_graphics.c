@@ -190,7 +190,21 @@ uint8_t mode_text_regs[] = {
 
 void vga_set_mode13h() { write_regs(mode_13h_regs); }
 
-void vga_set_text_mode() { write_regs(mode_text_regs); }
+void vga_set_text_mode() {
+  write_regs(mode_text_regs);
+
+  // Robustly reset Attribute Controller to index/data mode
+  uint8_t val;
+  asm volatile("inb %1, %0" : "=a"(val) : "dN"(VGA_INSTAT_READ));
+  asm volatile("outb %0, %1"
+               :
+               : "a"((uint8_t)0x20), "dN"(VGA_AC_INDEX)); // Enable Display
+
+  // Clear VGA Memory plane 0 to avoid garbage in text mode
+  uint8_t *fb = (uint8_t *)0xB8000;
+  for (int i = 0; i < 80 * 25 * 2; i++)
+    fb[i] = 0;
+}
 
 void vga_plot_pixel(int x, int y, uint8_t color) {
   uint8_t *fb = (uint8_t *)VGA_ADDR_13H;

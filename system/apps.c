@@ -273,7 +273,7 @@ static void generate_textures() {
   }
 }
 
-void app_doom() {
+void app_maze() {
   shell_active = 0;
   generate_textures();
   vga_set_mode13h();
@@ -284,6 +284,8 @@ void app_doom() {
   float posX = 1.5f, posY = 1.5f;
   float dirX = 1.0f, dirY = 0.0f;
   float planeX = 0.0f, planeY = 0.66f;
+
+  int show_map = 0;
 
   RTCTime startTime;
   rtc_get_time(&startTime);
@@ -400,11 +402,38 @@ void app_doom() {
     for (int i = 0; i < 320 * 200; i++)
       screen[i] = backbuffer[i];
 
+    // Draw Map Overlay
+    if (show_map) {
+      for (int my = 0; my < 16; my++) {
+        for (int mx = 0; mx < 16; mx++) {
+          uint8_t color = 0;
+          if (d_map[my * 16 + mx] == '#')
+            color = 15; // White walls
+          else if (d_map[my * 16 + mx] == 'E')
+            color = 48; // Green exit
+
+          if ((int)posX == mx && (int)posY == my)
+            color = 12; // Red player
+
+          if (color != 0) {
+            for (int py_ov = 0; py_ov < 4; py_ov++) {
+              for (int px_ov = 0; px_ov < 4; px_ov++) {
+                screen[(my * 4 + py_ov + 10) * 320 + (mx * 4 + px_ov + 10)] =
+                    color;
+              }
+            }
+          }
+        }
+      }
+    }
+
     if (key_waiting) {
       char c = last_key;
       key_waiting = 0;
       if (c == 'q' || c == 'Q')
         break;
+      if (c == 'f' || c == 'F')
+        show_map = !show_map;
       float moveSpeed = 0.2f;
       float cosR = 0.985f, sinR = 0.173f, cosL = 0.985f, sinL = -0.173f;
       if (c == 'w' || c == 'W') {

@@ -62,7 +62,7 @@ static void execute_command() {
              "<name>, cd <name>\n");
     vga_puts("System: sysinfo, whoami, reboot, shutdown, pkg, layout, time, "
              "clear\n");
-    vga_puts("Apps: snake\n");
+    vga_puts("Apps: snake, maze\n");
   } else if (kstrcmp(buffer, "clear") == 0) {
     vga_clear();
     goto prompt_no_nl;
@@ -113,13 +113,13 @@ static void execute_command() {
     if (buffer[3] == 0) {
       vga_puts("Usage: pkg list, pkg install <app>\n");
     } else if (kstrcmp(buffer + 4, "list") == 0) {
-      vga_puts("Available: matrix, calc, edit, doom\n");
+      vga_puts("Available: matrix, calc, edit, maze\n");
     } else if (buffer[4] == 'i' && buffer[5] == 'n' && buffer[6] == 's' &&
                buffer[7] == 't' && buffer[8] == 'a' && buffer[9] == 'l' &&
                buffer[10] == 'l' && buffer[11] == ' ') {
       char *app = buffer + 12;
       if (kstrcmp(app, "matrix") == 0 || kstrcmp(app, "calc") == 0 ||
-          kstrcmp(app, "edit") == 0 || kstrcmp(app, "doom") == 0) {
+          kstrcmp(app, "edit") == 0 || kstrcmp(app, "maze") == 0) {
         vga_puts("Downloading ");
         vga_puts(app);
         vga_puts("... [########--] 80%\r");
@@ -184,8 +184,8 @@ static void execute_command() {
         app_calc(""); // Simplified args
       else if (kstrcmp(buffer, "edit") == 0)
         app_edit(""); // Simplified args
-      else if (kstrcmp(buffer, "doom") == 0)
-        app_doom();
+      else if (kstrcmp(buffer, "maze") == 0)
+        app_maze();
       goto prompt_no_nl;
     }
 
