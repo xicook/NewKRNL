@@ -240,131 +240,193 @@ void app_time() {
   shell_active = 1;
 }
 
-// --- Doom App (ASCII Raycaster) ---
+// --- Doom App (High-Fidelity Textured Raycaster) ---
 #define DOOM_MAP_W 16
 #define DOOM_MAP_H 16
 static const char d_map[] = "################"
                             "#..............#"
-                            "#.###..###..###.#"
-                            "#.#...........#.#"
-                            "#.#.###...###.#.#"
-                            "#.#.#.......#.#.#"
-                            "#...#.......#...#"
-                            "#...#.......#...#"
-                            "#.###.......###.#"
-                            "#...............#"
-                            "#.###..###..###.#"
-                            "#.#...........#.#"
-                            "#.#..####...#.#.#"
-                            "#.#.........#.#.#"
+                            "#.##########...#"
+                            "#.#........#...#"
+                            "#.#..####..#...#"
+                            "#.#..#..#..#...#"
+                            "#....#..#......#"
+                            "#....#..#......#"
+                            "#.####..####...#"
+                            "#..............#"
+                            "#.##########...#"
+                            "#.#........#...#"
+                            "#.#..####..#...#"
+                            "#.#.........#..#"
                             "#..............#"
                             "################";
 
-// Fixed-point trig table (0-71 degrees, 5-deg steps, scaled by 256)
-static const int s_sin[] = {
-    0,    22,   44,   66,   87,   108,  128,  147,  164,  181,  196,  209,
-    221,  232,  240,  247,  252,  255,  256,  255,  252,  247,  240,  232,
-    221,  209,  196,  181,  164,  147,  128,  108,  87,   66,   44,   22,
-    0,    -22,  -44,  -66,  -87,  -108, -128, -147, -164, -181, -196, -209,
-    -221, -232, -240, -247, -252, -255, -256, -255, -252, -247, -240, -232,
-    -221, -209, -196, -181, -164, -147, -128, -108, -87,  -66,  -44,  -22};
-static const int s_cos[] = {
-    256,  255,  252,  247,  240,  232,  221,  209,  196,  181,  164,  147,
-    128,  108,  87,   66,   44,   22,   0,    -22,  -44,  -66,  -87,  -108,
-    -128, -147, -164, -181, -196, -209, -221, -232, -240, -247, -252, -255,
-    -256, -255, -252, -247, -240, -232, -221, -209, -196, -181, -164, -147,
-    -128, -108, -87,  -66,  -44,  -22,  0,    22,   44,   66,   87,   108,
-    128,  147,  164,  181,  196,  209,  221,  232,  240,  247,  252,  255};
+static uint8_t wall_tex[64 * 64];
+
+static void generate_textures() {
+  for (int y = 0; y < 64; y++) {
+    for (int x = 0; x < 64; x++) {
+      if (x == 0 || y == 0 || y == 31 || (y < 31 && x == 31))
+        wall_tex[y * 64 + x] = 20; // Gray
+      else
+        wall_tex[y * 64 + x] = 40; // Brick
+    }
+  }
+}
 
 void app_doom() {
   shell_active = 0;
+  generate_textures();
   vga_set_mode13h();
 
-  int px = 2 * 256, py = 2 * 256; // Player pos x256
-  int pa = 0;                     // Angle (0-71)
+  uint8_t *backbuffer = (uint8_t *)0x200000;
+  uint8_t *screen = (uint8_t *)0xA0000;
+
+  float posX = 3.5f, posY = 3.5f;
+  float dirX = -1.0f, dirY = 0.0f;
+  float planeX = 0.0f, planeY = 0.66f;
 
   while (1) {
-    // Pixel Render - Mode 13h (320x200)
-    uint8_t *fb = (uint8_t *)0xA0000;
-
-    // Draw ceiling and floor
     for (int i = 0; i < 320 * 100; i++)
-      fb[i] = 19; // Dark Blue/Gray ceiling
+      backbuffer[i] = 19;
     for (int i = 320 * 100; i < 320 * 200; i++)
-      fb[i] = 22; // Brown/Gray floor
+      backbuffer[i] = 22;
 
     for (int x = 0; x < 320; x++) {
-      // Ray angle (FOV approx 60 deg)
-      int ra = (pa - 6 + (x * 12 / 320) + 72) % 72;
-      int rx = px, ry = py;
-      int dist = 0;
-      int hit = 0;
+      float cameraX = 2.0f * x / 320.0f - 1.0f;
+      float rayDirX = dirX + planeX * cameraX;
+      float rayDirY = dirY + planeY * cameraX;
 
-      while (!hit && dist < 1200) {
-        rx += s_cos[ra] / 4;
-        ry += s_sin[ra] / 4;
-        dist++;
-        if (d_map[(ry / 256) * DOOM_MAP_W + (rx / 256)] == '#')
+      int mapX = (int)posX;
+      int mapY = (int)posY;
+
+      float sideDistX, sideDistY;
+      float deltaDistX =
+          (rayDirX == 0) ? 1e30
+                         : ((rayDirX > 0) ? 1.0f / rayDirX : -1.0f / rayDirX);
+      float deltaDistY =
+          (rayDirY == 0) ? 1e30
+                         : ((rayDirY > 0) ? 1.0f / rayDirY : -1.0f / rayDirY);
+      float perpWallDist;
+
+      int stepX, stepY;
+      int hit = 0, side;
+
+      if (rayDirX < 0) {
+        stepX = -1;
+        sideDistX = (posX - mapX) * deltaDistX;
+      } else {
+        stepX = 1;
+        sideDistX = (mapX + 1.0f - posX) * deltaDistX;
+      }
+      if (rayDirY < 0) {
+        stepY = -1;
+        sideDistY = (posY - mapY) * deltaDistY;
+      } else {
+        stepY = 1;
+        sideDistY = (mapY + 1.0f - posY) * deltaDistY;
+      }
+
+      while (hit == 0) {
+        if (sideDistX < sideDistY) {
+          sideDistX += deltaDistX;
+          mapX += stepX;
+          side = 0;
+        } else {
+          sideDistY += deltaDistY;
+          mapY += stepY;
+          side = 1;
+        }
+        if (d_map[mapY * DOOM_MAP_W + mapX] == '#')
           hit = 1;
       }
 
-      // Wall height calculation
-      int h = (200 * 256) / (dist + 1);
-      if (h > 200)
-        h = 200;
-
-      int y1 = 100 - h / 2;
-      int y2 = 100 + h / 2;
-
-      // Choose color based on distance
-      uint8_t color = 255; // White
-      if (dist < 300)
-        color = 15; // Bright White
-      else if (dist < 600)
-        color = 24; // Light Gray
-      else if (dist < 900)
-        color = 26; // Dark Gray
+      if (side == 0)
+        perpWallDist = (sideDistX - deltaDistX);
       else
-        color = 28; // Very Dark Gray
+        perpWallDist = (sideDistY - deltaDistY);
 
-      for (int y = y1; y < y2; y++) {
-        if (y >= 0 && y < 200)
-          fb[y * 320 + x] = color;
+      int lineHeight = (int)(200 / perpWallDist);
+      int drawStart = -lineHeight / 2 + 200 / 2;
+      if (drawStart < 0)
+        drawStart = 0;
+      int drawEnd = lineHeight / 2 + 200 / 2;
+      if (drawEnd >= 200)
+        drawEnd = 200 - 1;
+
+      float wallX;
+      if (side == 0)
+        wallX = posY + perpWallDist * rayDirY;
+      else
+        wallX = posX + perpWallDist * rayDirX;
+      wallX -= (int)wallX;
+
+      int texX = (int)(wallX * 64.0);
+      if (side == 0 && rayDirX > 0)
+        texX = 64 - texX - 1;
+      if (side == 1 && rayDirY < 0)
+        texX = 64 - texX - 1;
+
+      float step = 1.0f * 64 / lineHeight;
+      float texPos = (drawStart - 200 / 2 + lineHeight / 2) * step;
+      for (int y = drawStart; y < drawEnd; y++) {
+        int texY = (int)texPos & (64 - 1);
+        texPos += step;
+        uint8_t color = wall_tex[64 * texY + texX];
+        if (side == 1)
+          color = 25;
+        backbuffer[y * 320 + x] = color;
       }
     }
 
-    // Input
+    for (int i = 0; i < 320 * 200; i++)
+      screen[i] = backbuffer[i];
+
     if (key_waiting) {
       char c = last_key;
       key_waiting = 0;
       if (c == 'q' || c == 'Q')
         break;
+
+      float moveSpeed = 0.2f;
+      float cosR = 0.985f, sinR = 0.173f;
+      float cosL = 0.985f, sinL = -0.173f;
+
       if (c == 'w' || c == 'W') {
-        int nx = px + s_cos[pa];
-        int ny = py + s_sin[pa];
-        if (d_map[(ny / 256) * DOOM_MAP_W + (nx / 256)] != '#') {
-          px = nx;
-          py = ny;
-        }
+        if (d_map[(int)posY * DOOM_MAP_W + (int)(posX + dirX * moveSpeed)] !=
+            '#')
+          posX += dirX * moveSpeed;
+        if (d_map[(int)(posY + dirY * moveSpeed) * DOOM_MAP_W + (int)posX] !=
+            '#')
+          posY += dirY * moveSpeed;
       }
       if (c == 's' || c == 'S') {
-        int nx = px - s_cos[pa];
-        int ny = py - s_sin[pa];
-        if (d_map[(ny / 256) * DOOM_MAP_W + (nx / 256)] != '#') {
-          px = nx;
-          py = ny;
-        }
+        if (d_map[(int)posY * DOOM_MAP_W + (int)(posX - dirX * moveSpeed)] !=
+            '#')
+          posX -= dirX * moveSpeed;
+        if (d_map[(int)(posY - dirY * moveSpeed) * DOOM_MAP_W + (int)posX] !=
+            '#')
+          posY -= dirY * moveSpeed;
       }
-      if (c == 'a' || c == 'A')
-        pa = (pa - 1 + 72) % 72;
-      if (c == 'd' || c == 'D')
-        pa = (pa + 1) % 72;
+      if (c == 'd' || c == 'D') {
+        float oldDirX = dirX;
+        dirX = dirX * cosR - dirY * sinR;
+        dirY = oldDirX * sinR + dirY * cosR;
+        float oldPlaneX = planeX;
+        planeX = planeX * cosR - planeY * sinR;
+        planeY = oldPlaneX * sinR + planeY * cosR;
+      }
+      if (c == 'a' || c == 'A') {
+        float oldDirX = dirX;
+        dirX = dirX * cosL - dirY * sinL;
+        dirY = oldDirX * sinL + dirY * cosL;
+        float oldPlaneX = planeX;
+        planeX = planeX * cosL - planeY * sinL;
+        planeY = oldPlaneX * sinL + planeY * cosL;
+      }
     }
-    for (volatile int d = 0; d < 500000; d++)
-      ; // Frame rate control
   }
 
   vga_set_text_mode();
-  vga_init(); // Re-init text mode cursor/params
+  vga_init();
   shell_active = 1;
 }
