@@ -3,6 +3,7 @@
 #include "../drivers/pit.h"
 #include "../drivers/rtc.h"
 #include "../drivers/vga.h"
+#include "../drivers/vga_graphics.h"
 #include "lib.h"
 #include "setup.h"
 #include "shell.h"
@@ -277,22 +278,29 @@ static const int s_cos[] = {
 
 void app_doom() {
   shell_active = 0;
-  vga_clear();
+  vga_set_mode13h();
 
   int px = 2 * 256, py = 2 * 256; // Player pos x256
   int pa = 0;                     // Angle (0-71)
 
   while (1) {
-    // Simple Render
-    uint16_t *fb = (uint16_t *)0xB8000;
-    for (int x = 0; x < 80; x++) {
-      // Ray angle
-      int ra = (pa - 6 + (x * 12 / 80) + 72) % 72;
+    // Pixel Render - Mode 13h (320x200)
+    uint8_t *fb = (uint8_t *)0xA0000;
+
+    // Draw ceiling and floor
+    for (int i = 0; i < 320 * 100; i++)
+      fb[i] = 19; // Dark Blue/Gray ceiling
+    for (int i = 320 * 100; i < 320 * 200; i++)
+      fb[i] = 22; // Brown/Gray floor
+
+    for (int x = 0; x < 320; x++) {
+      // Ray angle (FOV approx 60 deg)
+      int ra = (pa - 6 + (x * 12 / 320) + 72) % 72;
       int rx = px, ry = py;
       int dist = 0;
       int hit = 0;
 
-      while (!hit && dist < 1000) {
+      while (!hit && dist < 1200) {
         rx += s_cos[ra] / 4;
         ry += s_sin[ra] / 4;
         dist++;
@@ -300,31 +308,30 @@ void app_doom() {
           hit = 1;
       }
 
-      int ceiling = 12 - (2560 / (dist + 1));
-      if (ceiling < 0)
-        ceiling = 0;
-      int floor = 25 - ceiling;
+      // Wall height calculation
+      int h = (200 * 256) / (dist + 1);
+      if (h > 200)
+        h = 200;
 
-      for (int y = 0; y < 25; y++) {
-        if (y < ceiling)
-          fb[y * 80 + x] = 0x0020; // Ceiling
-        else if (y > floor)
-          fb[y * 80 + x] = 0x082E; // Floor '.'
-        else {
-          char c = '#';
-          if (dist > 300)
-            c = 'X';
-          if (dist > 600)
-            c = '=';
-          if (dist > 900)
-            c = '.';
-          fb[y * 80 + x] = (uint16_t)0x0F00 | c;
-        }
+      int y1 = 100 - h / 2;
+      int y2 = 100 + h / 2;
+
+      // Choose color based on distance
+      uint8_t color = 255; // White
+      if (dist < 300)
+        color = 15; // Bright White
+      else if (dist < 600)
+        color = 24; // Light Gray
+      else if (dist < 900)
+        color = 26; // Dark Gray
+      else
+        color = 28; // Very Dark Gray
+
+      for (int y = y1; y < y2; y++) {
+        if (y >= 0 && y < 200)
+          fb[y * 320 + x] = color;
       }
     }
-
-    vga_set_color(14, 0);
-    vga_puts("\n DOOM (Beta) - WASD to move, Q to exit");
 
     // Input
     if (key_waiting) {
@@ -333,31 +340,31 @@ void app_doom() {
       if (c == 'q' || c == 'Q')
         break;
       if (c == 'w' || c == 'W') {
-        int nx = px + s_cos[pa] / 2;
-        int ny = py + s_sin[pa] / 2;
+        int nx = px + s_cos[pa];
+        int ny = py + s_sin[pa];
         if (d_map[(ny / 256) * DOOM_MAP_W + (nx / 256)] != '#') {
           px = nx;
           py = ny;
         }
       }
       if (c == 's' || c == 'S') {
-        int nx = px - s_cos[pa] / 2;
-        int ny = py - s_sin[pa] / 2;
+        int nx = px - s_cos[pa];
+        int ny = py - s_sin[pa];
         if (d_map[(ny / 256) * DOOM_MAP_W + (nx / 256)] != '#') {
           px = nx;
           py = ny;
         }
       }
       if (c == 'a' || c == 'A')
-        pa = (pa - 2 + 72) % 72;
+        pa = (pa - 1 + 72) % 72;
       if (c == 'd' || c == 'D')
-        pa = (pa + 2) % 72;
+        pa = (pa + 1) % 72;
     }
-    for (volatile int d = 0; d < 1000000; d++)
-      ;
+    for (volatile int d = 0; d < 500000; d++)
+      ; // Frame rate control
   }
 
-  vga_set_color(15, 0);
-  vga_clear();
+  vga_set_text_mode();
+  vga_init(); // Re-init text mode cursor/params
   shell_active = 1;
 }
