@@ -294,6 +294,12 @@ void app_maze() {
 
   while (1) {
     if (d_map[(int)posY * DOOM_MAP_W + (int)posX] == 'E') {
+      RTCTime endTime;
+      rtc_get_time(&endTime);
+      uint32_t endTotalSec =
+          endTime.hour * 3600 + endTime.minute * 60 + endTime.second;
+      uint32_t elapsed = endTotalSec - startTotalSec;
+
       vga_set_text_mode();
       vga_clear();
       vga_set_color(10, 0);
@@ -301,6 +307,11 @@ void app_maze() {
       vga_puts("       *        VICTORY! ESCAPED!          *\n");
       vga_puts("       *************************************\n\n");
       vga_set_color(15, 0);
+      vga_puts("       Time taken: ");
+      char buf[16];
+      kitoa(elapsed, buf);
+      vga_puts(buf);
+      vga_puts(" seconds\n\n");
       vga_puts("       Press any key to return to shell...");
       shell_active = 0;
       while (!key_waiting)

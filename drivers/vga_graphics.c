@@ -147,9 +147,9 @@ uint8_t mode_text_regs[] = {
     0x00,
     0x00,
     0x00,
-    0x50,
+    0x00,
     0x9C,
-    0x0E,
+    0x8E,
     0x8F,
     0x28,
     0x1F,
@@ -172,16 +172,16 @@ uint8_t mode_text_regs[] = {
     0x03,
     0x04,
     0x05,
-    0x14,
+    0x06,
     0x07,
-    0x38,
-    0x39,
-    0x3A,
-    0x3B,
-    0x3C,
-    0x3D,
-    0x3E,
-    0x3F,
+    0x08,
+    0x09,
+    0x0A,
+    0x0B,
+    0x0C,
+    0x0D,
+    0x0E,
+    0x0F,
     0x0C,
     0x00,
     0x0F,
@@ -191,19 +191,26 @@ uint8_t mode_text_regs[] = {
 void vga_set_mode13h() { write_regs(mode_13h_regs); }
 
 void vga_set_text_mode() {
+  // Reset sequencer for stable mode switch
+  asm volatile("outb %0, %1" : : "a"((uint8_t)0x00), "dN"(VGA_SEQ_INDEX));
+  asm volatile("outb %0, %1" : : "a"((uint8_t)0x01), "dN"(VGA_SEQ_DATA));
+
   write_regs(mode_text_regs);
 
-  // Robustly reset Attribute Controller to index/data mode
+  // Restart sequencer
+  asm volatile("outb %0, %1" : : "a"((uint8_t)0x00), "dN"(VGA_SEQ_INDEX));
+  asm volatile("outb %0, %1" : : "a"((uint8_t)0x03), "dN"(VGA_SEQ_DATA));
+
+  // Enable display and reset AC index
   uint8_t val;
   asm volatile("inb %1, %0" : "=a"(val) : "dN"(VGA_INSTAT_READ));
-  asm volatile("outb %0, %1"
-               :
-               : "a"((uint8_t)0x20), "dN"(VGA_AC_INDEX)); // Enable Display
+  asm volatile("outb %0, %1" : : "a"((uint8_t)0x20), "dN"(VGA_AC_INDEX));
 
-  // Clear VGA Memory plane 0 to avoid garbage in text mode
-  uint8_t *fb = (uint8_t *)0xB8000;
-  for (int i = 0; i < 80 * 25 * 2; i++)
-    fb[i] = 0;
+  // Clear text buffer and set default gray on black
+  uint16_t *fb = (uint16_t *)0xB8000;
+  for (int i = 0; i < 80 * 25; i++) {
+    fb[i] = 0x0720; // Space ' ', Light Gray on Black
+  }
 }
 
 void vga_plot_pixel(int x, int y, uint8_t color) {
