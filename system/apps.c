@@ -240,23 +240,23 @@ void app_time() {
   shell_active = 1;
 }
 
-// --- Doom App (High-Fidelity Textured Raycaster) ---
+// --- Maze Quest 3D ---
 #define DOOM_MAP_W 16
 #define DOOM_MAP_H 16
 static const char d_map[] = "################"
-                            "#..............#"
-                            "#.##########...#"
-                            "#.#........#...#"
-                            "#.#..####..#...#"
-                            "#.#..#..#..#...#"
+                            "#P.............#"
+                            "#.##########.#.#"
+                            "#.#........#.#.#"
+                            "#.#..####..#.#.#"
+                            "#.#..#..#..#.#.#"
                             "#....#..#......#"
-                            "#....#..#......#"
-                            "#.####..####...#"
-                            "#..............#"
-                            "#.##########...#"
-                            "#.#........#...#"
-                            "#.#..####..#...#"
-                            "#.#.........#..#"
+                            "#.####..####.#.#"
+                            "#.####..####.#.#"
+                            "#........#.....#"
+                            "#.##########.#.#"
+                            "#.#........#.#.#"
+                            "#.#..####..#.#.#"
+                            "#.#.........#.E#"
                             "#..............#"
                             "################";
 
@@ -281,24 +281,42 @@ void app_doom() {
   uint8_t *backbuffer = (uint8_t *)0x200000;
   uint8_t *screen = (uint8_t *)0xA0000;
 
-  float posX = 3.5f, posY = 3.5f;
-  float dirX = -1.0f, dirY = 0.0f;
+  float posX = 1.5f, posY = 1.5f;
+  float dirX = 1.0f, dirY = 0.0f;
   float planeX = 0.0f, planeY = 0.66f;
 
+  RTCTime startTime;
+  rtc_get_time(&startTime);
+  uint32_t startTotalSec =
+      startTime.hour * 3600 + startTime.minute * 60 + startTime.second;
+
   while (1) {
+    if (d_map[(int)posY * DOOM_MAP_W + (int)posX] == 'E') {
+      vga_set_text_mode();
+      vga_clear();
+      vga_set_color(10, 0);
+      vga_puts("\n\n\n\n       *************************************\n");
+      vga_puts("       *        VICTORY! ESCAPED!          *\n");
+      vga_puts("       *************************************\n\n");
+      vga_set_color(15, 0);
+      vga_puts("       Press any key to return to shell...");
+      shell_active = 0;
+      while (!key_waiting)
+        asm volatile("pause");
+      key_waiting = 0;
+      break;
+    }
+
     for (int i = 0; i < 320 * 100; i++)
       backbuffer[i] = 19;
     for (int i = 320 * 100; i < 320 * 200; i++)
-      backbuffer[i] = 22;
+      backbuffer[i] = 24;
 
     for (int x = 0; x < 320; x++) {
       float cameraX = 2.0f * x / 320.0f - 1.0f;
       float rayDirX = dirX + planeX * cameraX;
       float rayDirY = dirY + planeY * cameraX;
-
-      int mapX = (int)posX;
-      int mapY = (int)posY;
-
+      int mapX = (int)posX, mapY = (int)posY;
       float sideDistX, sideDistY;
       float deltaDistX =
           (rayDirX == 0) ? 1e30
@@ -307,9 +325,7 @@ void app_doom() {
           (rayDirY == 0) ? 1e30
                          : ((rayDirY > 0) ? 1.0f / rayDirY : -1.0f / rayDirY);
       float perpWallDist;
-
-      int stepX, stepY;
-      int hit = 0, side;
+      int stepX, stepY, hit = 0, side;
 
       if (rayDirX < 0) {
         stepX = -1;
@@ -336,7 +352,8 @@ void app_doom() {
           mapY += stepY;
           side = 1;
         }
-        if (d_map[mapY * DOOM_MAP_W + mapX] == '#')
+        if (d_map[mapY * DOOM_MAP_W + mapX] == '#' ||
+            d_map[mapY * DOOM_MAP_W + mapX] == 'E')
           hit = 1;
       }
 
@@ -346,38 +363,40 @@ void app_doom() {
         perpWallDist = (sideDistY - deltaDistY);
 
       int lineHeight = (int)(200 / perpWallDist);
-      int drawStart = -lineHeight / 2 + 200 / 2;
+      int drawStart = -lineHeight / 2 + 100;
       if (drawStart < 0)
         drawStart = 0;
-      int drawEnd = lineHeight / 2 + 200 / 2;
+      int drawEnd = lineHeight / 2 + 100;
       if (drawEnd >= 200)
-        drawEnd = 200 - 1;
+        drawEnd = 199;
 
-      float wallX;
-      if (side == 0)
-        wallX = posY + perpWallDist * rayDirY;
-      else
-        wallX = posX + perpWallDist * rayDirX;
-      wallX -= (int)wallX;
-
-      int texX = (int)(wallX * 64.0);
-      if (side == 0 && rayDirX > 0)
-        texX = 64 - texX - 1;
-      if (side == 1 && rayDirY < 0)
-        texX = 64 - texX - 1;
-
-      float step = 1.0f * 64 / lineHeight;
-      float texPos = (drawStart - 200 / 2 + lineHeight / 2) * step;
-      for (int y = drawStart; y < drawEnd; y++) {
-        int texY = (int)texPos & (64 - 1);
-        texPos += step;
-        uint8_t color = wall_tex[64 * texY + texX];
-        if (side == 1)
-          color = 25;
-        backbuffer[y * 320 + x] = color;
+      if (d_map[mapY * DOOM_MAP_W + mapX] == 'E') {
+        for (int y = drawStart; y < drawEnd; y++)
+          backbuffer[y * 320 + x] = 48; // Green
+      } else {
+        float wallX;
+        if (side == 0)
+          wallX = posY + perpWallDist * rayDirY;
+        else
+          wallX = posX + perpWallDist * rayDirX;
+        wallX -= (int)wallX;
+        int texX = (int)(wallX * 64.0);
+        if (side == 0 && rayDirX > 0)
+          texX = 63 - texX;
+        if (side == 1 && rayDirY < 0)
+          texX = 63 - texX;
+        float step = 64.0f / lineHeight;
+        float texPos = (drawStart - 100 + lineHeight / 2) * step;
+        for (int y = drawStart; y < drawEnd; y++) {
+          int texY = (int)texPos & 63;
+          texPos += step;
+          uint8_t color = wall_tex[texY * 64 + texX];
+          if (side == 1)
+            color /= 2;
+          backbuffer[y * 320 + x] = color;
+        }
       }
     }
-
     for (int i = 0; i < 320 * 200; i++)
       screen[i] = backbuffer[i];
 
@@ -386,11 +405,8 @@ void app_doom() {
       key_waiting = 0;
       if (c == 'q' || c == 'Q')
         break;
-
       float moveSpeed = 0.2f;
-      float cosR = 0.985f, sinR = 0.173f;
-      float cosL = 0.985f, sinL = -0.173f;
-
+      float cosR = 0.985f, sinR = 0.173f, cosL = 0.985f, sinL = -0.173f;
       if (c == 'w' || c == 'W') {
         if (d_map[(int)posY * DOOM_MAP_W + (int)(posX + dirX * moveSpeed)] !=
             '#')
@@ -425,7 +441,6 @@ void app_doom() {
       }
     }
   }
-
   vga_set_text_mode();
   vga_init();
   shell_active = 1;
