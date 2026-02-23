@@ -13,8 +13,18 @@
 #define VGA_CRTC_DATA 0x3D5
 #define VGA_INSTAT_READ 0x3DA
 
-static uint8_t saved_font[4096];
-static int font_saved = 0;
+typedef struct {
+  uint8_t misc;
+  uint8_t seq[5];
+  uint8_t crtc[25];
+  uint8_t gc[9];
+  uint8_t ac[21];
+  uint8_t dac[16 * 3];
+  uint8_t font[4096];
+} vga_state_t;
+
+static vga_state_t initial_state;
+static int state_saved = 0;
 
 static void outb(uint16_t port, uint8_t val) {
   asm volatile("outb %0, %1" : : "a"(val), "dN"(port));
@@ -141,7 +151,7 @@ uint8_t mode_13h_regs[] = {
 uint8_t mode_text_regs[] = {
     /* MISC */ 0x67,
     /* SEQ */ 0x03,
-    0x01,
+    0x00,
     0x03,
     0x00,
     0x02,
@@ -201,107 +211,147 @@ uint8_t mode_text_regs[] = {
     0x08,
     0x00};
 
-void vga_save_font() {
-  // Save state
-  outb(VGA_GC_INDEX, 0x04);
-  uint8_t old_gc4 = inb(VGA_GC_DATA);
-  outb(VGA_GC_INDEX, 0x05);
-  uint8_t old_gc5 = inb(VGA_GC_DATA);
-  outb(VGA_GC_INDEX, 0x06);
-  uint8_t old_gc6 = inb(VGA_GC_DATA);
-  outb(VGA_SEQ_INDEX, 0x02);
-  uint8_t old_seq2 = inb(VGA_SEQ_DATA);
-  outb(VGA_SEQ_INDEX, 0x04);
-  uint8_t old_seq4 = inb(VGA_SEQ_DATA);
-
-  // Switch to font read mode
-  outb(VGA_SEQ_INDEX, 0x04);
-  outb(VGA_SEQ_DATA, 0x07); // Sequential
-  outb(VGA_SEQ_INDEX, 0x02);
-  outb(VGA_SEQ_DATA, 0x04); // Write only to plane 2
-  outb(VGA_GC_INDEX, 0x04);
-  outb(VGA_GC_DATA, 0x02); // Read only from plane 2
-  outb(VGA_GC_INDEX, 0x05);
-  outb(VGA_GC_DATA, 0x00); // Read mode 0, write mode 0
-  outb(VGA_GC_INDEX, 0x06);
-  outb(VGA_GC_DATA, 0x00); // Map to 0xA0000
-
-  uint8_t *vga_mem = (uint8_t *)0xA0000;
-  for (int i = 0; i < 4096; i++) {
-    saved_font[i] = vga_mem[i];
-  }
-  font_saved = 1;
-
-  // Restore state
-  outb(VGA_GC_INDEX, 0x04);
-  outb(VGA_GC_DATA, old_gc4);
-  outb(VGA_GC_INDEX, 0x05);
-  outb(VGA_GC_DATA, old_gc5);
-  outb(VGA_GC_INDEX, 0x06);
-  outb(VGA_GC_DATA, old_gc6);
-  outb(VGA_SEQ_INDEX, 0x02);
-  outb(VGA_SEQ_DATA, old_seq2);
-  outb(VGA_SEQ_INDEX, 0x04);
-  outb(VGA_SEQ_DATA, old_seq4);
-}
-
-void vga_restore_font() {
-  if (!font_saved)
-    return;
-
-  // Switch to font write mode
-  outb(VGA_SEQ_INDEX, 0x02);
-  outb(VGA_SEQ_DATA, 0x04); // Write only to plane 2
-  outb(VGA_SEQ_INDEX, 0x04);
-  outb(VGA_SEQ_DATA, 0x07); // Sequential
-  outb(VGA_GC_INDEX, 0x05);
-  outb(VGA_GC_DATA, 0x00); // Read mode 0, write mode 0
-  outb(VGA_GC_INDEX, 0x06);
-  outb(VGA_GC_DATA, 0x00); // Map to 0xA0000
-
-  uint8_t *vga_mem = (uint8_t *)0xA0000;
-  for (int i = 0; i < 4096; i++) {
-    vga_mem[i] = saved_font[i];
-  }
-
-  // Back to text mode memory layout
-  outb(VGA_SEQ_INDEX, 0x02);
-  outb(VGA_SEQ_DATA, 0x03); // Enable planes 0 & 1
-  outb(VGA_SEQ_INDEX, 0x04);
-  outb(VGA_SEQ_DATA, 0x02); // Odd/Even
-  outb(VGA_GC_INDEX, 0x06);
-  outb(VGA_GC_DATA, 0x0E); // Map to 0xB8000
-}
-
 void vga_set_mode13h() { write_regs(mode_13h_regs); }
 
-void vga_set_text_mode() {
-  // Sync wait
-  while (inb(VGA_INSTAT_READ) & 0x08)
-    ;
-  while (!(inb(VGA_INSTAT_READ) & 0x08))
-    ;
+void vga_save_state() {
+  if (state_saved)
+    return;
 
-  // Reset sequencer
-  outb(VGA_SEQ_INDEX, 0x00);
-  outb(VGA_SEQ_DATA, 0x01);
+  initial_state.misc = inb(0x3CC);
 
-  write_regs(mode_text_regs);
-  vga_restore_font();
+  for (int i = 0; i < 5; i++) {
+    outb(VGA_SEQ_INDEX, i);
+    initial_state.seq[i] = inb(VGA_SEQ_DATA);
+  }
 
-  // Restart sequencer
-  outb(VGA_SEQ_INDEX, 0x00);
-  outb(VGA_SEQ_DATA, 0x03);
+  // Unprotect CRTC for reading some regs
+  outb(VGA_CRTC_INDEX, 0x11);
+  uint8_t old_v = inb(VGA_CRTC_DATA);
+  outb(VGA_CRTC_DATA, old_v & 0x7F);
+  for (int i = 0; i < 25; i++) {
+    outb(VGA_CRTC_INDEX, i);
+    initial_state.crtc[i] = inb(VGA_CRTC_DATA);
+  }
+  outb(VGA_CRTC_DATA, old_v);
 
-  // Reset Attribute Controller
+  for (int i = 0; i < 9; i++) {
+    outb(VGA_GC_INDEX, i);
+    initial_state.gc[i] = inb(VGA_GC_DATA);
+  }
+
+  for (int i = 0; i < 21; i++) {
+    inb(VGA_INSTAT_READ);
+    outb(VGA_AC_INDEX, i);
+    initial_state.ac[i] = inb(0x3C1);
+  }
   inb(VGA_INSTAT_READ);
   outb(VGA_AC_INDEX, 0x20);
 
-  // Clear text buffer
-  uint16_t *fb = (uint16_t *)0xB8000;
-  for (int i = 0; i < 80 * 25; i++) {
-    fb[i] = 0x0720;
+  // Save DAC Palette (16 colors)
+  outb(0x3C7, 0);
+  for (int i = 0; i < 16 * 3; i++) {
+    initial_state.dac[i] = inb(0x3C9);
   }
+
+  // Save Font (Plane 2)
+  outb(VGA_SEQ_INDEX, 0x02);
+  uint8_t s2 = inb(VGA_SEQ_DATA);
+  outb(VGA_SEQ_INDEX, 0x04);
+  uint8_t s4 = inb(VGA_SEQ_DATA);
+  outb(VGA_GC_INDEX, 0x04);
+  uint8_t g4 = inb(VGA_GC_DATA);
+  outb(VGA_GC_INDEX, 0x05);
+  uint8_t g5 = inb(VGA_GC_DATA);
+  outb(VGA_GC_INDEX, 0x06);
+  uint8_t g6 = inb(VGA_GC_DATA);
+
+  outb(VGA_SEQ_INDEX, 0x04);
+  outb(VGA_SEQ_DATA, 0x07);
+  outb(VGA_SEQ_INDEX, 0x02);
+  outb(VGA_SEQ_DATA, 0x04);
+  outb(VGA_GC_INDEX, 0x04);
+  outb(VGA_GC_DATA, 0x02);
+  outb(VGA_GC_INDEX, 0x05);
+  outb(VGA_GC_DATA, 0x00);
+  outb(VGA_GC_INDEX, 0x06);
+  outb(VGA_GC_DATA, 0x00);
+
+  uint8_t *v = (uint8_t *)0xA0000;
+  for (int i = 0; i < 4096; i++)
+    initial_state.font[i] = v[i];
+
+  outb(VGA_SEQ_INDEX, 0x02);
+  outb(VGA_SEQ_DATA, s2);
+  outb(VGA_SEQ_INDEX, 0x04);
+  outb(VGA_SEQ_DATA, s4);
+  outb(VGA_GC_INDEX, 0x04);
+  outb(VGA_GC_DATA, g4);
+  outb(VGA_GC_INDEX, 0x05);
+  outb(VGA_GC_DATA, g5);
+  outb(VGA_GC_INDEX, 0x06);
+  outb(VGA_GC_DATA, g6);
+
+  state_saved = 1;
+}
+
+void vga_set_text_mode() {
+  if (!state_saved)
+    return;
+
+  // Restore Palette
+  outb(0x3C8, 0);
+  for (int i = 0; i < 16 * 3; i++)
+    outb(0x3C9, initial_state.dac[i]);
+
+  // Restore Font
+  outb(VGA_SEQ_INDEX, 0x02);
+  outb(VGA_SEQ_DATA, 0x04);
+  outb(VGA_SEQ_INDEX, 0x04);
+  outb(VGA_SEQ_DATA, 0x07);
+  outb(VGA_GC_INDEX, 0x05);
+  outb(VGA_GC_DATA, 0x00);
+  outb(VGA_GC_INDEX, 0x06);
+  outb(VGA_GC_DATA, 0x00);
+  uint8_t *v = (uint8_t *)0xA0000;
+  for (int i = 0; i < 4096; i++)
+    v[i] = initial_state.font[i];
+
+  // Restore Regs
+  outb(VGA_SEQ_INDEX, 0x00);
+  outb(VGA_SEQ_DATA, 0x01); // Reset
+  outb(VGA_MISC_WRITE, initial_state.misc);
+  for (int i = 0; i < 5; i++) {
+    outb(VGA_SEQ_INDEX, i);
+    outb(VGA_SEQ_DATA, initial_state.seq[i]);
+  }
+
+  outb(VGA_CRTC_INDEX, 0x11);
+  outb(VGA_CRTC_DATA, initial_state.crtc[0x11] & 0x7F);
+  for (int i = 0; i < 25; i++) {
+    outb(VGA_CRTC_INDEX, i);
+    outb(VGA_CRTC_DATA, initial_state.crtc[i]);
+  }
+
+  for (int i = 0; i < 9; i++) {
+    outb(VGA_GC_INDEX, i);
+    outb(VGA_GC_DATA, initial_state.gc[i]);
+  }
+
+  for (int i = 0; i < 21; i++) {
+    inb(VGA_INSTAT_READ);
+    outb(VGA_AC_INDEX, i);
+    outb(VGA_AC_WRITE, initial_state.ac[i]);
+  }
+
+  outb(VGA_SEQ_INDEX, 0x00);
+  outb(VGA_SEQ_DATA, 0x03); // Restart
+  inb(VGA_INSTAT_READ);
+  outb(VGA_AC_INDEX, 0x20);
+
+  // Clear Screen
+  uint16_t *fb = (uint16_t *)0xB8000;
+  for (int i = 0; i < 80 * 25; i++)
+    fb[i] = 0x0720;
 }
 
 void vga_plot_pixel(int x, int y, uint8_t color) {

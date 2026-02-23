@@ -276,7 +276,6 @@ static void generate_textures() {
 void app_maze() {
   shell_active = 0;
   generate_textures();
-  vga_save_font();
   vga_set_mode13h();
 
   uint8_t *backbuffer = (uint8_t *)0x200000;
